@@ -18,6 +18,7 @@ for required in picoclaw picoclaw-launcher picoclawctl picoclaw-termux picoclawc
   [ -f "$MODDIR/bin/$required" ] || abort "Missing executable: bin/$required"
 done
 chmod 0755 "$MODDIR/bin/picoclaw" "$MODDIR/bin/picoclaw-launcher" "$MODDIR/bin/picoclawctl" "$MODDIR/bin/picoclaw-termux" "$MODDIR/bin/picoclawctl-termux"
+[ ! -f "$MODDIR/system/etc/resolv.conf" ] || chmod 0644 "$MODDIR/system/etc/resolv.conf"
 
 mkdir -p "$BASE/logs" "$BASE/workspace" "$BASE/tmp"
 chmod 0700 "$BASE" "$BASE/logs" "$BASE/workspace" "$BASE/tmp"

@@ -100,7 +100,7 @@ while [ -f "$ENABLE" ]; do
   launcher_pid=$(pid_from_file "$LAUNCHER_PID" 2>/dev/null || true)
   if ! pid_alive "$launcher_pid"; then
     log "starting dashboard on $LAUNCHER_HOST:$LAUNCHER_PORT"
-    "$LAUNCHER" -console -no-browser -host "$LAUNCHER_HOST" -port "$LAUNCHER_PORT" "$LAUNCHER_CONFIG" >> "$LAUNCHER_LOG" 2>&1 &
+    "$LAUNCHER" -console -no-browser -host "$LAUNCHER_HOST" -port "$LAUNCHER_PORT" "$CONFIG" >> "$LAUNCHER_LOG" 2>&1 &
     echo $! > "$LAUNCHER_PID"
     sleep 5
     if pid_alive "$(pid_from_file "$LAUNCHER_PID" 2>/dev/null || true)"; then

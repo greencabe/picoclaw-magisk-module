@@ -21,6 +21,9 @@ fi
 
 rm -rf "$MODULE_DIR" "$OUT_DIR"
 mkdir -p "$MODULE_DIR/bin" "$MODULE_DIR/webroot" "$OUT_DIR"
+if [ -d "$ROOT/packaging/magisk/system" ]; then
+  cp -R "$ROOT/packaging/magisk/system" "$MODULE_DIR/"
+fi
 sed -e "s/@VERSION@/$VERSION/g" -e "s/@VERSION_CODE@/$VERSION_CODE/g" "$ROOT/packaging/magisk/module.prop.in" > "$MODULE_DIR/module.prop"
 cp "$ROOT/packaging/magisk/customize.sh" "$ROOT/packaging/magisk/service.sh" "$ROOT/packaging/magisk/uninstall.sh" "$ROOT/packaging/magisk/action.sh" "$MODULE_DIR/"
 cp -R "$ROOT/packaging/magisk/webroot/." "$MODULE_DIR/webroot/"
