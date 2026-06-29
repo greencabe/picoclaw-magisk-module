@@ -78,6 +78,15 @@ jobs:
         if: steps.existing.outputs.skip != 'true'
         run: cp -a picoclaw-magisk-module/packaging picoclaw/
 
+      - name: Apply module source patches
+        if: steps.existing.outputs.skip != 'true'
+        working-directory: picoclaw
+        run: |
+          for patch in ../picoclaw-magisk-module/patches/*.py; do
+            [ -e "$patch" ] || continue
+            python3 "$patch"
+          done
+
       - name: Install system packages
         if: steps.existing.outputs.skip != 'true'
         run: |
