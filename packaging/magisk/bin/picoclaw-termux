@@ -1,0 +1,7 @@
+#!/system/bin/sh
+BASE=/data/adb/picoclaw
+BIN=/data/adb/modules/picoclaw/bin/picoclaw
+quote_arg() { printf "'%s'" "$(printf "%s" "$1" | sed "s/'/'\\''/g")"; }
+cmd="HOME=$BASE PICOCLAW_HOME=$BASE PICOCLAW_CONFIG=$BASE/config.json PICOCLAW_BINARY=$BIN TMPDIR=$BASE/tmp PATH=/data/data/com.termux/files/home/bin:/data/data/com.termux/files/usr/bin:/system/bin:/system/xbin:/data/adb/ksu/bin:\$PATH $BIN"
+for arg in "$@"; do cmd="$cmd $(quote_arg "$arg")"; done
+exec su -c "$cmd"

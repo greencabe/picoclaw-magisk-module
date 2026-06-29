@@ -1,0 +1,78 @@
+#!/system/bin/sh
+BASE=/data/adb/picoclaw
+MODDIR=/data/adb/modules/picoclaw
+BIN=$MODDIR/bin/picoclaw
+SERVICE=$MODDIR/service.sh
+UPSTREAM_PID=$BASE/.picoclaw.pid
+SERVICE_PID=$BASE/service.pid
+LAUNCHER_PID=$BASE/launcher.pid
+
+pid_from_json() { [ -f "$1" ] && sed -n 's/.*"PID"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p' "$1" | head -n 1; }
+pid_from_file() { [ -f "$1" ] && sed -n '1p' "$1"; }
+pid_alive() { [ -n "$1" ] && kill -0 "$1" 2>/dev/null; }
+find_gateway_pid() { ps -A -o PID,ARGS 2>/dev/null | grep '[p]icoclaw .*gateway' | while read -r pid _; do echo "$pid"; done | head -n 1; }
+find_launcher_pid() { ps -A -o PID,ARGS 2>/dev/null | grep '[p]icoclaw-launcher' | while read -r pid _; do echo "$pid"; done | head -n 1; }
+find_service_pid() { ps -A -o PID,ARGS 2>/dev/null | grep '[s]ervice.sh' | grep '/data/adb/modules/picoclaw/' | while read -r pid _; do echo "$pid"; done | head -n 1; }
+first_live_pid() { for pid in "$@"; do pid_alive "$pid" && { echo "$pid"; return 0; }; done; return 1; }
+service_pid() { first_live_pid "$(pid_from_file "$SERVICE_PID" 2>/dev/null || true)" "$(find_service_pid)" || true; }
+gateway_pid() { first_live_pid "$(pid_from_json "$UPSTREAM_PID" 2>/dev/null || true)" "$(find_gateway_pid)" || true; }
+launcher_pid() { first_live_pid "$(pid_from_file "$LAUNCHER_PID" 2>/dev/null || true)" "$(find_launcher_pid)" || true; }
+is_service_running() { pid_alive "$(service_pid)"; }
+is_gateway_running() { pid_alive "$(gateway_pid)"; }
+is_launcher_running() { pid_alive "$(launcher_pid)"; }
+kill_pid_list() { for pid in $1; do [ -n "$pid" ] && [ "$pid" != "$$" ] && kill "$pid" 2>/dev/null; done; sleep 1; for pid in $1; do [ -n "$pid" ] && [ "$pid" != "$$" ] && kill -0 "$pid" 2>/dev/null && kill -9 "$pid" 2>/dev/null; done; }
+cleanup_pid_files() { rm -f "$LAUNCHER_PID" "$SERVICE_PID" "$UPSTREAM_PID"; }
+kill_gateway_processes() { kill_pid_list "$(ps -A -o PID,ARGS 2>/dev/null | grep '[p]icoclaw .*gateway' | while read -r pid _; do echo "$pid"; done)"; }
+kill_launcher_processes() { kill_pid_list "$(ps -A -o PID,ARGS 2>/dev/null | grep '[p]icoclaw-launcher' | while read -r pid _; do echo "$pid"; done)"; }
+kill_service_processes() { kill_pid_list "$(ps -A -o PID,ARGS 2>/dev/null | grep '[s]ervice.sh' | grep '/data/adb/modules/picoclaw/' | while read -r pid _; do echo "$pid"; done)"; }
+wait_stopped() { i=0; while [ "$i" -lt 10 ]; do ! is_service_running && ! is_gateway_running && ! is_launcher_running && { cleanup_pid_files; return 0; }; sleep 1; i=$((i + 1)); done; return 1; }
+
+start_service() {
+  if is_service_running; then echo "service already running pid=$(service_pid)"; return 0; fi
+  [ -f "$SERVICE" ] || { echo "missing service: $SERVICE" >&2; return 1; }
+  PICOCLAW_SKIP_BOOT_WAIT=1 /system/bin/sh "$SERVICE" >/dev/null 2>&1 &
+  echo "service started"
+}
+
+case "${1:-status}" in
+  enable|start)
+    mkdir -p "$BASE"
+    touch "$BASE/enable"
+    echo "enabled"
+    start_service
+    ;;
+  restart)
+    "$0" disable
+    wait_stopped >/dev/null 2>&1 || true
+    "$0" enable
+    ;;
+  disable|stop)
+    rm -f "$BASE/enable"
+    spid=$(service_pid); lpid=$(launcher_pid); gpid=$(gateway_pid)
+    pid_alive "$gpid" && kill "$gpid" 2>/dev/null
+    pid_alive "$lpid" && kill "$lpid" 2>/dev/null
+    pid_alive "$spid" && kill "$spid" 2>/dev/null
+    kill_gateway_processes; kill_launcher_processes; kill_service_processes
+    wait_stopped >/dev/null 2>&1 || true
+    cleanup_pid_files
+    echo "disabled"
+    ;;
+  status)
+    [ -f "$BASE/enable" ] && echo "enabled" || echo "disabled"
+    is_service_running && echo "service running pid=$(service_pid)" || echo "service not running"
+    is_launcher_running && echo "dashboard running pid=$(launcher_pid) url=http://127.0.0.1:18800" || echo "dashboard not running"
+    is_gateway_running && echo "gateway running pid=$(gateway_pid)" || echo "gateway not running"
+    ;;
+  logs)
+    tail -n "${2:-100}" "$BASE/logs/service.log" "$BASE/logs/launcher.log" "$BASE/logs/gateway.log" "$BASE/logs/launcher_panic.log" "$BASE/logs/gateway_panic.log" 2>/dev/null
+    ;;
+  onboard)
+    export HOME=$BASE PICOCLAW_HOME=$BASE PICOCLAW_CONFIG=$BASE/config.json PICOCLAW_BINARY=$BIN TMPDIR=$BASE/tmp
+    mkdir -p "$BASE/tmp"
+    exec "$BIN" --no-color onboard
+    ;;
+  *)
+    echo "usage: picoclawctl enable|disable|restart|status|logs [n]|onboard"
+    exit 2
+    ;;
+esac

@@ -1,0 +1,138 @@
+name: Release Magisk Module
+
+on:
+  workflow_dispatch:
+    inputs:
+      upstream_tag:
+        description: 'PicoClaw upstream tag to build, empty = latest v* tag'
+        required: false
+        type: string
+      force:
+        description: 'Rebuild release even if it already exists'
+        required: false
+        default: false
+        type: boolean
+  schedule:
+    - cron: '23 3 * * *'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build upstream PicoClaw tag as Magisk module
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout packaging repo
+        uses: actions/checkout@v4
+        with:
+          path: picoclaw-magisk-module
+
+      - name: Resolve upstream tag
+        id: upstream
+        env:
+          INPUT_TAG: ${{ inputs.upstream_tag }}
+        run: |
+          set -euo pipefail
+          if [ -n "${INPUT_TAG:-}" ]; then
+            tag="$INPUT_TAG"
+          else
+            tag=$(git ls-remote --tags --refs https://github.com/sipeed/picoclaw.git 'v*' | awk -F/ '{print $3}' | sort -V | tail -1)
+          fi
+          if [ -z "$tag" ]; then
+            echo "No upstream v* tag found" >&2
+            exit 1
+          fi
+          sha=$(git ls-remote --tags --refs https://github.com/sipeed/picoclaw.git "refs/tags/$tag" | awk '{print $1}')
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "Resolved $tag at $sha"
+
+      - name: Skip existing release
+        id: existing
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.upstream.outputs.tag }}
+          FORCE: ${{ inputs.force }}
+        run: |
+          set -euo pipefail
+          if [ "$FORCE" != "true" ] && gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Release $TAG already exists; skip"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout upstream PicoClaw
+        if: steps.existing.outputs.skip != 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: sipeed/picoclaw
+          ref: ${{ steps.upstream.outputs.tag }}
+          path: picoclaw
+
+      - name: Overlay Magisk packaging
+        if: steps.existing.outputs.skip != 'true'
+        run: cp -a picoclaw-magisk-module/packaging picoclaw/
+
+      - name: Install system packages
+        if: steps.existing.outputs.skip != 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y zip
+
+      - name: Set up Go
+        if: steps.existing.outputs.skip != 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: picoclaw/go.mod
+          cache-dependency-path: picoclaw/go.sum
+
+      - name: Set up pnpm
+        if: steps.existing.outputs.skip != 'true'
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node
+        if: steps.existing.outputs.skip != 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+          cache-dependency-path: picoclaw/web/frontend/pnpm-lock.yaml
+
+      - name: Build Magisk module
+        if: steps.existing.outputs.skip != 'true'
+        working-directory: picoclaw
+        env:
+          PICOCLAW_MODULE_VERSION: ${{ steps.upstream.outputs.tag }}
+        run: |
+          set -euo pipefail
+          make build-android-arm64
+          make build-launcher-android-arm64
+          packaging/magisk/build-module.sh
+
+      - name: Publish GitHub release
+        if: steps.existing.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.upstream.outputs.tag }}
+          UPSTREAM_SHA: ${{ steps.upstream.outputs.sha }}
+        run: |
+          set -euo pipefail
+          gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
+          gh release create "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            picoclaw/dist/magisk/picoclaw-magisk.zip \
+            --title "PicoClaw Magisk Module $TAG" \
+            --notes "ARM64 Android Magisk module built from upstream PicoClaw tag $TAG at $UPSTREAM_SHA. Dashboard embedded by default."
+
+      - name: Upload Magisk artifact
+        if: steps.existing.outputs.skip != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: picoclaw-magisk-${{ steps.upstream.outputs.tag }}-arm64
+          path: picoclaw/dist/magisk/picoclaw-magisk.zip
