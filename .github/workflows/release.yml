@@ -39,10 +39,10 @@ jobs:
           if [ -n "${INPUT_TAG:-}" ]; then
             tag="$INPUT_TAG"
           else
-            tag=$(git ls-remote --tags --refs https://github.com/sipeed/picoclaw.git 'v*' | awk -F/ '{print $3}' | sort -V | tail -1)
+            tag=$(gh release view --repo sipeed/picoclaw --json tagName --jq .tagName)
           fi
           if [ -z "$tag" ]; then
-            echo "No upstream v* tag found" >&2
+            echo "No upstream stable release found" >&2
             exit 1
           fi
           sha=$(git ls-remote --tags --refs https://github.com/sipeed/picoclaw.git "refs/tags/$tag" | awk '{print $1}')
