@@ -31,6 +31,11 @@ func (h *Handler) registerWhatsAppNativeRoutes(mux *http.ServeMux) {
 }
 
 func (h *Handler) handleWhatsAppNativeQR(w http.ResponseWriter, r *http.Request) {
+	if strings.TrimSpace(r.URL.Query().Get("active")) != "1" {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(whatsappNativeQRResponse{Status: "idle"})
+		return
+	}
 	content, err := os.ReadFile(whatsappNativeQRPath())
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
@@ -100,16 +105,17 @@ import {
 } from "@/components/ui/card"
 
 export function WhatsAppNativeQRCard() {
+  const [active, setActive] = useState(false)
   const [qrDataURI, setQrDataURI] = useState<string | null>(null)
-  const [status, setStatus] = useState<"loading" | "pending" | "code" | "error">("loading")
+  const [status, setStatus] = useState<"idle" | "loading" | "pending" | "code" | "error">("idle")
   const [error, setError] = useState("")
   const inFlightRef = useRef(false)
 
   const refresh = useCallback(async () => {
-    if (inFlightRef.current) return
+    if (!active || inFlightRef.current) return
     inFlightRef.current = true
     try {
-      const resp = await getWhatsAppNativeQR()
+      const resp = await getWhatsAppNativeQR(true)
       setStatus(resp.status)
       setQrDataURI(resp.qr_data_uri ?? null)
       setError(resp.error ?? "")
@@ -120,13 +126,21 @@ export function WhatsAppNativeQRCard() {
     } finally {
       inFlightRef.current = false
     }
-  }, [])
+  }, [active])
 
   useEffect(() => {
+    if (!active) return
     void refresh()
     const timer = setInterval(() => void refresh(), 2000)
     return () => clearInterval(timer)
-  }, [refresh])
+  }, [active, refresh])
+
+  const start = () => {
+    setActive(true)
+    setStatus("loading")
+    setQrDataURI(null)
+    setError("")
+  }
 
   return (
     <Card className="border-border/60 shadow-sm">
@@ -136,34 +150,44 @@ export function WhatsAppNativeQRCard() {
           WhatsApp QR Login
         </CardTitle>
         <CardDescription>
-          Enable WhatsApp Native, restart service, then scan this QR from WhatsApp Linked Devices.
+          Enable WhatsApp Native and restart service. Press Bind WhatsApp only when you need QR login.
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="flex flex-col items-center gap-4 py-2">
-          {qrDataURI ? (
-            <img
-              src={qrDataURI}
-              alt="WhatsApp QR Code"
-              className="border-border/60 h-56 w-56 rounded-xl border bg-white p-2 shadow-sm"
-            />
-          ) : (
-            <div className="border-border/60 bg-muted flex h-56 w-56 items-center justify-center rounded-xl border">
-              <IconLoader2 className="text-muted-foreground animate-spin" size={32} />
-            </div>
-          )}
-          {status === "code" ? (
-            <p className="text-muted-foreground text-sm">Scan with WhatsApp → Linked devices → Link a device.</p>
-          ) : status === "error" ? (
-            <p className="text-destructive text-sm">{error || "QR unavailable"}</p>
-          ) : (
-            <p className="text-muted-foreground text-sm">Waiting for QR from running WhatsApp Native service…</p>
-          )}
-          <Button variant="ghost" size="sm" onClick={() => void refresh()} className="text-muted-foreground">
-            <IconRefresh size={14} className="mr-1" />
-            Refresh
-          </Button>
-        </div>
+        {!active ? (
+          <div className="flex flex-col items-center gap-4 py-6">
+            <p className="text-muted-foreground text-sm">QR hidden until binding starts.</p>
+            <Button onClick={start} className="gap-2">
+              <IconQrcode size={16} />
+              Bind WhatsApp
+            </Button>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center gap-4 py-2">
+            {qrDataURI ? (
+              <img
+                src={qrDataURI}
+                alt="WhatsApp QR Code"
+                className="border-border/60 h-56 w-56 rounded-xl border bg-white p-2 shadow-sm"
+              />
+            ) : (
+              <div className="border-border/60 bg-muted flex h-56 w-56 items-center justify-center rounded-xl border">
+                <IconLoader2 className="text-muted-foreground animate-spin" size={32} />
+              </div>
+            )}
+            {status === "code" ? (
+              <p className="text-muted-foreground text-sm">Scan with WhatsApp → Linked devices → Link a device.</p>
+            ) : status === "error" ? (
+              <p className="text-destructive text-sm">{error || "QR unavailable"}</p>
+            ) : (
+              <p className="text-muted-foreground text-sm">Waiting for QR from running WhatsApp Native service…</p>
+            )}
+            <Button variant="ghost" size="sm" onClick={() => void refresh()} className="text-muted-foreground">
+              <IconRefresh size={14} className="mr-1" />
+              Refresh
+            </Button>
+          </div>
+        )}
       </CardContent>
     </Card>
   )
