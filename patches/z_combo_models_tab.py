@@ -356,14 +356,14 @@ combo_block = '''        {!loading && !fetchError && activeTab === "models" && (
                 </label>
                 <label className="block text-sm">
                   <span className="text-muted-foreground">Models, one per line</span>
-                  <textarea className="bg-background mt-1 min-h-36 w-full rounded-md border px-3 py-2 font-mono text-xs" value={comboModels} onChange={(e) => setComboModels(e.target.value)} placeholder="antigravity/gemini-3-flash-agent\nantigravity/claude-sonnet-4-6" />
+                  <textarea className="bg-background mt-1 min-h-36 w-full rounded-md border px-3 py-2 font-mono text-xs" value={comboModels} onChange={(e) => setComboModels(e.target.value)} placeholder={"antigravity/gemini-3-flash-agent\\nantigravity/claude-sonnet-4-6"} />
                 </label>
                 {modelChoices.length > 0 && (
                   <div className="max-h-40 overflow-y-auto rounded-md border p-2">
                     <p className="text-muted-foreground mb-2 text-xs">Click to add existing model:</p>
                     <div className="flex flex-wrap gap-1">
                       {modelChoices.map((model) => (
-                        <button key={model.index} type="button" className="bg-muted hover:bg-muted/80 rounded px-2 py-1 font-mono text-[11px]" onClick={() => setComboModels((value) => `${value}${value.trim() ? "\n" : ""}${modelRefForCombo(model)}`)}>
+                        <button key={model.index} type="button" className="bg-muted hover:bg-muted/80 rounded px-2 py-1 font-mono text-[11px]" onClick={() => setComboModels((value) => `${value}${value.trim() ? "\\n" : ""}${modelRefForCombo(model)}`)}>
                           {model.model_name}
                         </button>
                       ))}
