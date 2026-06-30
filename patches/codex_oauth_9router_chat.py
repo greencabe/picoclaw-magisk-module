@@ -2,7 +2,7 @@ from pathlib import Path
 
 path = Path('pkg/providers/oauth/codex_provider.go')
 text = path.read_text()
-text = text.replace('"github.com/openai/openai-go/v3/responses"\n', '"github.com/openai/openai-go/v3/responses"\n\t"github.com/openai/openai-go/v3/shared"\n')
+text = text.replace('"github.com/openai/openai-go/v3/responses"\n', '"github.com/openai/openai-go/v3/responses"\n\t"github.com/openai/openai-go/v3/shared"\n\t"os"\n')
 text = text.replace('option.WithHeader("OpenAI-Beta", "responses=experimental"),\n', 'option.WithHeader("OpenAI-Beta", "responses=experimental"),\n\t\toption.WithHeader("User-Agent", "codex_cli_rs/0.136.0"),\n')
 text = text.replace('if accountID != "" {\n\t\topts = append(opts, option.WithHeader("Chatgpt-Account-Id", accountID))\n\t} else {', 'sessionID := "picoclaw-codex"\n\tif cacheKey, ok := options["prompt_cache_key"].(string); ok && cacheKey != "" {\n\t\tsessionID = cacheKey\n\t}\n\topts = append(opts, option.WithHeader("session_id", sessionID))\n\tif accountID != "" {\n\t\topts = append(opts, option.WithHeader("Chatgpt-Account-Id", accountID))\n\t} else {')
 text = text.replace('params := buildCodexParams(messages, tools, resolvedModel, options, useNativeSearch)', 'PARAMS_PLACEHOLDER')
@@ -19,11 +19,29 @@ new = r'''	if len(tools) > 0 || enableWebSearch {
 		params.Tools = orc.TranslateTools(tools, enableWebSearch)
 	}
 
+	reasoningEffortValue := os.Getenv("PICOCLAW_CODEX_REASONING_EFFORT")
+	if reasoningEffortValue == "" {
+		home := os.Getenv("PICOCLAW_HOME")
+		if home == "" {
+			home = "/data/adb/picoclaw"
+		}
+		if data, err := os.ReadFile(home + "/codex-reasoning-effort"); err == nil {
+			reasoningEffortValue = strings.TrimSpace(string(data))
+		}
+	}
+	reasoningEffort := shared.ReasoningEffort(reasoningEffortValue)
+	switch reasoningEffort {
+	case shared.ReasoningEffortNone, shared.ReasoningEffortMinimal, shared.ReasoningEffortLow, shared.ReasoningEffortMedium, shared.ReasoningEffortHigh, shared.ReasoningEffortXhigh:
+	default:
+		reasoningEffort = shared.ReasoningEffortLow
+	}
 	params.Reasoning = shared.ReasoningParam{
-		Effort:  shared.ReasoningEffortLow,
+		Effort:  reasoningEffort,
 		Summary: shared.ReasoningSummaryAuto,
 	}
-	params.Include = []responses.ResponseIncludable{responses.ResponseIncludableReasoningEncryptedContent}
+	if reasoningEffort != shared.ReasoningEffortNone {
+		params.Include = []responses.ResponseIncludable{responses.ResponseIncludableReasoningEncryptedContent}
+	}
 
 	return params
 }'''
