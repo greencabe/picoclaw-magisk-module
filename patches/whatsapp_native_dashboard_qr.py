@@ -80,12 +80,12 @@ p.write_text(s.replace(old, new, 1))
 p = Path('web/frontend/src/api/channels.ts')
 s = p.read_text()
 old = '''export interface WecomFlowResponse {\n  flow_id: string\n  status: "wait" | "scaned" | "confirmed" | "expired" | "error"\n  qr_data_uri?: string\n  bot_id?: string\n  error?: string\n}\n'''
-new = old + '''\nexport interface WhatsAppNativeQRResponse {\n  status: "pending" | "code" | "error"\n  qr_data_uri?: string\n  error?: string\n}\n'''
+new = old + '''\nexport interface WhatsAppNativeQRResponse {\n  status: "idle" | "pending" | "code" | "error"\n  qr_data_uri?: string\n  error?: string\n}\n'''
 if old not in s:
     raise SystemExit('api type marker not found')
 s = s.replace(old, new, 1)
 old = '''export async function pollWecomFlow(\n  flowID: string,\n): Promise<WecomFlowResponse> {\n  return request<WecomFlowResponse>(\n    `/api/wecom/flows/${encodeURIComponent(flowID)}`,\n  )\n}\n'''
-new = old + '''\nexport async function getWhatsAppNativeQR(): Promise<WhatsAppNativeQRResponse> {\n  return request<WhatsAppNativeQRResponse>("/api/whatsapp-native/qr")\n}\n'''
+new = old + '''\nexport async function getWhatsAppNativeQR(active = false): Promise<WhatsAppNativeQRResponse> {\n  return request<WhatsAppNativeQRResponse>(`/api/whatsapp-native/qr?active=${active ? "1" : "0"}`)\n}\n'''
 if old not in s:
     raise SystemExit('api function marker not found')
 p.write_text(s.replace(old, new, 1))
