@@ -44,15 +44,22 @@ path = Path('web/backend/api/models.go')
 s = path.read_text()
 helper = r'''func antigravityCuratedModels() []upstreamModel {
 	return []upstreamModel{
-		{ID: "gemini-3-flash-agent", OwnedBy: "google-antigravity"},
-		{ID: "gemini-3.5-flash-low", OwnedBy: "google-antigravity"},
-		{ID: "gemini-3.5-flash-extra-low", OwnedBy: "google-antigravity"},
-		{ID: "gemini-pro-agent", OwnedBy: "google-antigravity"},
-		{ID: "gemini-3.1-pro-low", OwnedBy: "google-antigravity"},
-		{ID: "gemini-3-flash", OwnedBy: "google-antigravity"},
-		{ID: "claude-sonnet-4-6", OwnedBy: "google-antigravity"},
 		{ID: "claude-opus-4-6-thinking", OwnedBy: "google-antigravity"},
+		{ID: "claude-sonnet-4-6", OwnedBy: "google-antigravity"},
+		{ID: "gemini-2.5-flash", OwnedBy: "google-antigravity"},
+		{ID: "gemini-2.5-flash-lite", OwnedBy: "google-antigravity"},
+		{ID: "gemini-2.5-flash-thinking", OwnedBy: "google-antigravity"},
+		{ID: "gemini-3-flash", OwnedBy: "google-antigravity"},
+		{ID: "gemini-3-flash-agent", OwnedBy: "google-antigravity"},
+		{ID: "gemini-3.1-flash-image", OwnedBy: "google-antigravity"},
+		{ID: "gemini-3.1-flash-lite", OwnedBy: "google-antigravity"},
+		{ID: "gemini-3.1-pro-low", OwnedBy: "google-antigravity"},
+		{ID: "gemini-3.5-flash-extra-low", OwnedBy: "google-antigravity"},
+		{ID: "gemini-3.5-flash-low", OwnedBy: "google-antigravity"},
+		{ID: "gemini-pro-agent", OwnedBy: "google-antigravity"},
 		{ID: "gpt-oss-120b-medium", OwnedBy: "google-antigravity"},
+		{ID: "tab_flash_lite_preview", OwnedBy: "google-antigravity"},
+		{ID: "tab_jump_flash_lite_preview", OwnedBy: "google-antigravity"},
 	}
 }
 
