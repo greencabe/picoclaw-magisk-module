@@ -57,10 +57,17 @@ helper = r'''func antigravityCuratedModels() []upstreamModel {
 }
 
 '''
-if 'func antigravityCuratedModels()' not in s:
-    if 'func fetchAntigravityOAuthModels(ctx context.Context)' not in s:
-        raise SystemExit('fetchAntigravityOAuthModels anchor missing')
+helper_start = s.find('func antigravityCuratedModels() []upstreamModel {')
+if helper_start >= 0:
+    helper_end = s.find('\n}\n\nfunc fetchAntigravityOAuthModels', helper_start)
+    if helper_end < 0:
+        raise SystemExit('antigravityCuratedModels end not found')
+    helper_end += len('\n}\n\n')
+    s = s[:helper_start] + helper + s[helper_end:]
+elif 'func fetchAntigravityOAuthModels(ctx context.Context)' in s:
     s = s.replace('func fetchAntigravityOAuthModels(ctx context.Context)', helper + 'func fetchAntigravityOAuthModels(ctx context.Context)', 1)
+else:
+    raise SystemExit('fetchAntigravityOAuthModels anchor missing')
 start = s.find('func fetchAntigravityOAuthModels(ctx context.Context) ([]upstreamModel, error) {')
 if start < 0:
     raise SystemExit('fetchAntigravityOAuthModels function not found')
