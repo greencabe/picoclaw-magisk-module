@@ -121,8 +121,8 @@ jobs:
         run: |
           set -euo pipefail
           gofmt -w web/backend/api/models.go web/backend/api/oauth.go pkg/auth/store.go pkg/providers/oauth/codex_provider.go pkg/providers/oauth/antigravity_provider.go pkg/providers/oauth_facade.go pkg/agent/model_resolution.go pkg/providers/provider_metadata.go pkg/androidnet/dns.go cmd/picoclaw/main.go web/backend/main.go
-          make build-android-arm64
-          make build-launcher-android-arm64
+          make build-android-arm64 VERSION="${{ steps.upstream.outputs.tag }}" GIT_COMMIT="${{ steps.upstream.outputs.sha }}"
+          make build-launcher-android-arm64 VERSION="${{ steps.upstream.outputs.tag }}" GIT_COMMIT="${{ steps.upstream.outputs.sha }}"
           packaging/magisk/build-module.sh
 
       - name: Publish GitHub release
