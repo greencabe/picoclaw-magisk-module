@@ -6,10 +6,10 @@ This repo does not fork or patch PicoClaw source. GitHub Actions builds upstream
 
 ## Release flow
 
+- Stable workflow builds latest upstream non-prerelease GitHub Release.
+- Nightly workflow builds upstream `nightly` ref/tag as a separate prerelease.
+
 - Manual trigger: Actions → Release Magisk Module → Run workflow.
-- Scheduled trigger checks latest upstream `v*` tag.
-- If this repo has no release for that tag, it builds `picoclaw-magisk.zip`.
-- Use `force=true` to replace an existing release asset.
 
 ## Runtime
 

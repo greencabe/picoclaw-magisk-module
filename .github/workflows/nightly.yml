@@ -1,0 +1,108 @@
+name: Nightly Magisk Module
+
+on:
+  workflow_dispatch:
+    inputs:
+      upstream_ref:
+        description: 'PicoClaw upstream nightly ref/tag, empty = nightly'
+        required: false
+        default: nightly
+        type: string
+  schedule:
+    - cron: '23 15 * * *'
+
+permissions:
+  contents: write
+
+jobs:
+  nightly:
+    name: Build upstream PicoClaw nightly as Magisk module
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout packaging repo
+        uses: actions/checkout@v4
+        with:
+          path: picoclaw-magisk-module
+
+      - name: Resolve upstream nightly
+        id: upstream
+        env:
+          INPUT_REF: ${{ inputs.upstream_ref }}
+        run: |
+          set -euo pipefail
+          ref="${INPUT_REF:-nightly}"
+          sha=$(git ls-remote https://github.com/sipeed/picoclaw.git "$ref" "refs/tags/$ref" "refs/heads/$ref" | awk 'NR==1 {print $1}')
+          if [ -z "$sha" ]; then
+            echo "No upstream nightly ref found: $ref" >&2
+            exit 1
+          fi
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "Resolved $ref at $sha"
+
+      - name: Checkout upstream PicoClaw
+        uses: actions/checkout@v4
+        with:
+          repository: sipeed/picoclaw
+          ref: ${{ steps.upstream.outputs.ref }}
+          path: picoclaw
+
+      - name: Overlay Magisk packaging
+        run: cp -a picoclaw-magisk-module/packaging picoclaw/
+
+      - name: Install system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y zip
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: picoclaw/go.mod
+          cache-dependency-path: picoclaw/go.sum
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+          cache-dependency-path: picoclaw/web/frontend/pnpm-lock.yaml
+
+      - name: Build Magisk module
+        working-directory: picoclaw
+        env:
+          PICOCLAW_MODULE_VERSION: nightly
+        run: |
+          set -euo pipefail
+          make build-android-arm64 VERSION="nightly" GIT_COMMIT="${{ steps.upstream.outputs.sha }}"
+          make build-launcher-android-arm64 VERSION="nightly" GIT_COMMIT="${{ steps.upstream.outputs.sha }}"
+          packaging/magisk/build-module.sh
+          mv dist/magisk/picoclaw-magisk.zip dist/magisk/picoclaw-magisk-nightly.zip
+
+      - name: Publish GitHub prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPSTREAM_REF: ${{ steps.upstream.outputs.ref }}
+          UPSTREAM_SHA: ${{ steps.upstream.outputs.sha }}
+        run: |
+          set -euo pipefail
+          gh release delete nightly --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
+          gh release create nightly \
+            --repo "$GITHUB_REPOSITORY" \
+            --prerelease \
+            picoclaw/dist/magisk/picoclaw-magisk-nightly.zip \
+            --title "PicoClaw Magisk Module Nightly" \
+            --notes "ARM64 Android Magisk module built from upstream PicoClaw $UPSTREAM_REF at $UPSTREAM_SHA. Upstream source is built as-is; only Magisk packaging is overlaid."
+
+      - name: Upload Magisk artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: picoclaw-magisk-nightly-arm64
+          path: picoclaw/dist/magisk/picoclaw-magisk-nightly.zip
