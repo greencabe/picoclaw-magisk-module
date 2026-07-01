@@ -1,0 +1,158 @@
+name: Android-Patched Magisk Module
+
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: 'Build channel: stable, nightly, or all'
+        required: false
+        default: all
+        type: choice
+        options:
+          - all
+          - stable
+          - nightly
+  schedule:
+    - cron: '23 18 * * *'
+
+permissions:
+  contents: write
+
+jobs:
+  resolve:
+    name: Resolve upstream refs
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - name: Resolve matrix
+        id: matrix
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CHANNEL: ${{ inputs.channel || 'all' }}
+        run: |
+          set -euo pipefail
+          items=()
+          if [ "$CHANNEL" = "all" ] || [ "$CHANNEL" = "stable" ]; then
+            stable_tag=$(gh release view --repo sipeed/picoclaw --json tagName --jq .tagName)
+            stable_sha=$(git ls-remote --tags --refs https://github.com/sipeed/picoclaw.git "refs/tags/$stable_tag" | awk '{print $1}')
+            items+=("{\"channel\":\"stable\",\"ref\":\"$stable_tag\",\"version\":\"$stable_tag-android\",\"sha\":\"$stable_sha\",\"prerelease\":false}")
+          fi
+          if [ "$CHANNEL" = "all" ] || [ "$CHANNEL" = "nightly" ]; then
+            nightly_ref=$(git ls-remote --tags --refs https://github.com/sipeed/picoclaw.git refs/tags/nightly | awk '{print $2}')
+            if [ -z "$nightly_ref" ]; then
+              nightly_ref=$(git ls-remote --heads https://github.com/sipeed/picoclaw.git refs/heads/nightly | awk '{print $2}')
+            fi
+            if [ -z "$nightly_ref" ]; then
+              echo "No upstream nightly ref found" >&2
+              exit 1
+            fi
+            git init upstream >/dev/null
+            git -C upstream remote add origin https://github.com/sipeed/picoclaw.git
+            git -C upstream fetch --quiet --tags --depth=1 origin "$nightly_ref"
+            nightly_sha=$(git -C upstream rev-parse FETCH_HEAD)
+            nightly_tag=$(git -C upstream tag --points-at FETCH_HEAD --list 'v*' | sort -V | tail -n 1)
+            short_sha=$(printf '%s' "$nightly_sha" | cut -c1-8)
+            if [ -n "$nightly_tag" ]; then
+              nightly_version="$nightly_tag-nightly-android"
+            else
+              nightly_version="nightly-$(date -u +%Y%m%d)-$short_sha-android"
+            fi
+            items+=("{\"channel\":\"nightly\",\"ref\":\"$nightly_ref\",\"version\":\"$nightly_version\",\"sha\":\"$nightly_sha\",\"prerelease\":true}")
+          fi
+          json=$(printf '%s\n' "${items[@]}" | jq -cs '{include: .}')
+          echo "matrix=$json" >> "$GITHUB_OUTPUT"
+          echo "$json"
+
+  build:
+    name: Build ${{ matrix.version }}
+    runs-on: ubuntu-24.04
+    needs: resolve
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.resolve.outputs.matrix) }}
+
+    steps:
+      - name: Checkout packaging repo
+        uses: actions/checkout@v4
+        with:
+          path: picoclaw-magisk-module
+
+      - name: Checkout upstream PicoClaw
+        uses: actions/checkout@v4
+        with:
+          repository: sipeed/picoclaw
+          ref: ${{ matrix.ref }}
+          path: picoclaw
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Overlay Magisk packaging
+        run: cp -a picoclaw-magisk-module/packaging picoclaw/
+
+      - name: Apply Android DNS patch
+        working-directory: picoclaw
+        run: python3 ../picoclaw-magisk-module/patches/android_dns_fallback.py
+
+      - name: Install system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y zip
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: picoclaw/go.mod
+          cache-dependency-path: picoclaw/go.sum
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+          cache-dependency-path: picoclaw/web/frontend/pnpm-lock.yaml
+
+      - name: Build Magisk module
+        working-directory: picoclaw
+        env:
+          PICOCLAW_MODULE_VERSION: ${{ matrix.version }}
+        run: |
+          set -euo pipefail
+          gofmt -w pkg/androidnet/dns.go cmd/picoclaw/main.go web/backend/main.go
+          make build-android-arm64 VERSION="${{ matrix.version }}" GIT_COMMIT="${{ matrix.sha }}"
+          make build-launcher-android-arm64 VERSION="${{ matrix.version }}" GIT_COMMIT="${{ matrix.sha }}"
+          packaging/magisk/build-module.sh
+          mv dist/magisk/picoclaw-magisk.zip "dist/magisk/picoclaw-magisk-${{ matrix.version }}.zip"
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ matrix.version }}
+          UPSTREAM_REF: ${{ matrix.ref }}
+          UPSTREAM_SHA: ${{ matrix.sha }}
+          PRERELEASE: ${{ matrix.prerelease }}
+        run: |
+          set -euo pipefail
+          gh release delete "$VERSION" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
+          prerelease_flag=""
+          if [ "$PRERELEASE" = "true" ]; then
+            prerelease_flag="--prerelease"
+          fi
+          gh release create "$VERSION" \
+            --repo "$GITHUB_REPOSITORY" \
+            $prerelease_flag \
+            "picoclaw/dist/magisk/picoclaw-magisk-$VERSION.zip" \
+            --title "PicoClaw Magisk Module $VERSION" \
+            --notes "ARM64 Android Magisk module built from upstream PicoClaw ref $UPSTREAM_REF at $UPSTREAM_SHA with Android DNS fallback patch only."
+
+      - name: Upload Magisk artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: picoclaw-magisk-${{ matrix.version }}-arm64
+          path: picoclaw/dist/magisk/picoclaw-magisk-${{ matrix.version }}.zip
