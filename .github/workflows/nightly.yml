@@ -38,9 +38,19 @@ jobs:
             echo "No upstream nightly ref found: $ref" >&2
             exit 1
           fi
+          upstream_tag=$(git ls-remote --tags --refs https://github.com/sipeed/picoclaw.git 'refs/tags/v*' | awk -v sha="$sha" '$1 == sha { sub("refs/tags/", "", $2); print $2 }' | sort -V | tail -n 1)
+          short_sha=$(printf '%s' "$sha" | cut -c1-8)
+          if [ -n "$upstream_tag" ]; then
+            version="$upstream_tag-nightly"
+          else
+            version="nightly-$(date -u +%Y%m%d)-$short_sha"
+          fi
           echo "ref=$ref" >> "$GITHUB_OUTPUT"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
-          echo "Resolved $ref at $sha"
+          echo "short_sha=$short_sha" >> "$GITHUB_OUTPUT"
+          echo "upstream_tag=$upstream_tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Resolved $ref at $sha as $version"
 
       - name: Checkout upstream PicoClaw
         uses: actions/checkout@v4
@@ -78,31 +88,33 @@ jobs:
       - name: Build Magisk module
         working-directory: picoclaw
         env:
-          PICOCLAW_MODULE_VERSION: nightly
+          PICOCLAW_MODULE_VERSION: ${{ steps.upstream.outputs.version }}
         run: |
           set -euo pipefail
-          make build-android-arm64 VERSION="nightly" GIT_COMMIT="${{ steps.upstream.outputs.sha }}"
-          make build-launcher-android-arm64 VERSION="nightly" GIT_COMMIT="${{ steps.upstream.outputs.sha }}"
+          make build-android-arm64 VERSION="${{ steps.upstream.outputs.version }}" GIT_COMMIT="${{ steps.upstream.outputs.sha }}"
+          make build-launcher-android-arm64 VERSION="${{ steps.upstream.outputs.version }}" GIT_COMMIT="${{ steps.upstream.outputs.sha }}"
           packaging/magisk/build-module.sh
-          mv dist/magisk/picoclaw-magisk.zip dist/magisk/picoclaw-magisk-nightly.zip
+          mv dist/magisk/picoclaw-magisk.zip "dist/magisk/picoclaw-magisk-${{ steps.upstream.outputs.version }}.zip"
 
       - name: Publish GitHub prerelease
         env:
           GH_TOKEN: ${{ github.token }}
           UPSTREAM_REF: ${{ steps.upstream.outputs.ref }}
           UPSTREAM_SHA: ${{ steps.upstream.outputs.sha }}
+          UPSTREAM_TAG: ${{ steps.upstream.outputs.upstream_tag }}
+          VERSION: ${{ steps.upstream.outputs.version }}
         run: |
           set -euo pipefail
-          gh release delete nightly --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
-          gh release create nightly \
+          gh release delete "$VERSION" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
+          gh release create "$VERSION" \
             --repo "$GITHUB_REPOSITORY" \
             --prerelease \
-            picoclaw/dist/magisk/picoclaw-magisk-nightly.zip \
-            --title "PicoClaw Magisk Module Nightly" \
-            --notes "ARM64 Android Magisk module built from upstream PicoClaw $UPSTREAM_REF at $UPSTREAM_SHA. Upstream source is built as-is; only Magisk packaging is overlaid."
+            "picoclaw/dist/magisk/picoclaw-magisk-$VERSION.zip" \
+            --title "PicoClaw Magisk Module $VERSION" \
+            --notes "ARM64 Android Magisk module built from upstream PicoClaw ref $UPSTREAM_REF, tag ${UPSTREAM_TAG:-none}, commit $UPSTREAM_SHA. Upstream source is built as-is; only Magisk packaging is overlaid."
 
       - name: Upload Magisk artifact
         uses: actions/upload-artifact@v4
         with:
-          name: picoclaw-magisk-nightly-arm64
-          path: picoclaw/dist/magisk/picoclaw-magisk-nightly.zip
+          name: picoclaw-magisk-${{ steps.upstream.outputs.version }}-arm64
+          path: picoclaw/dist/magisk/picoclaw-magisk-${{ steps.upstream.outputs.version }}.zip
