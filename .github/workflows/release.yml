@@ -117,7 +117,8 @@ jobs:
           make build-android-arm64 VERSION="$VERSION" GIT_COMMIT="$SHA"
           make build-launcher-android-arm64 VERSION="$VERSION" GIT_COMMIT="$SHA"
           packaging/magisk/build-module.sh
-          mv dist/magisk/picoclaw-magisk.zip "dist/magisk/picoclaw-magisk-$VERSION.zip"
+          mkdir -p ../picoclaw-magisk-module/artifacts
+          mv dist/magisk/picoclaw-magisk.zip "../picoclaw-magisk-module/artifacts/picoclaw-magisk-$VERSION.zip"
 
       - name: Apply Android DNS patch
         if: steps.existing.outputs.skip != 'true'
@@ -137,7 +138,8 @@ jobs:
           make build-android-arm64 VERSION="$VERSION" GIT_COMMIT="$SHA"
           make build-launcher-android-arm64 VERSION="$VERSION" GIT_COMMIT="$SHA"
           packaging/magisk/build-module.sh
-          mv dist/magisk/picoclaw-magisk.zip "dist/magisk/picoclaw-magisk-$VERSION.zip"
+          mkdir -p ../picoclaw-magisk-module/artifacts
+          mv dist/magisk/picoclaw-magisk.zip "../picoclaw-magisk-module/artifacts/picoclaw-magisk-$VERSION.zip"
 
       - name: Publish GitHub release
         if: steps.existing.outputs.skip != 'true'
@@ -150,8 +152,8 @@ jobs:
           gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
           gh release create "$TAG" \
             --repo "$GITHUB_REPOSITORY" \
-            "picoclaw/dist/magisk/picoclaw-magisk-$TAG.zip" \
-            "picoclaw/dist/magisk/picoclaw-magisk-$TAG-android.zip" \
+            "picoclaw-magisk-module/artifacts/picoclaw-magisk-$TAG.zip" \
+            "picoclaw-magisk-module/artifacts/picoclaw-magisk-$TAG-android.zip" \
             --title "PicoClaw Magisk Module $TAG" \
             --notes "ARM64 Android Magisk modules built from upstream PicoClaw tag $TAG at $UPSTREAM_SHA. Assets: pure upstream and Android DNS fallback patched."
 
@@ -160,4 +162,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: picoclaw-magisk-${{ steps.upstream.outputs.tag }}-arm64
-          path: picoclaw/dist/magisk/*.zip
+          path: picoclaw-magisk-module/artifacts/*.zip
