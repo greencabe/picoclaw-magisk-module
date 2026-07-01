@@ -2,7 +2,7 @@
 
 Packaging-only repo for PicoClaw Android arm64 Magisk/KernelSU/APatch module.
 
-This repo does not fork PicoClaw source. GitHub Actions builds from upstream `sipeed/picoclaw` release tags, overlays module packaging, then publishes a release with the same tag.
+This repo does not fork or patch PicoClaw source. GitHub Actions builds upstream `sipeed/picoclaw` release tags as-is, overlays only Magisk packaging files, then publishes a release with the same tag.
 
 ## Release flow
 

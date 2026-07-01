@@ -78,14 +78,6 @@ jobs:
         if: steps.existing.outputs.skip != 'true'
         run: cp -a picoclaw-magisk-module/packaging picoclaw/
 
-      - name: Apply module source patches
-        if: steps.existing.outputs.skip != 'true'
-        working-directory: picoclaw
-        run: |
-          for patch in ../picoclaw-magisk-module/patches/*.py; do
-            [ -e "$patch" ] || continue
-            python3 "$patch"
-          done
       - name: Install system packages
         if: steps.existing.outputs.skip != 'true'
         run: |
@@ -120,7 +112,6 @@ jobs:
           PICOCLAW_MODULE_VERSION: ${{ steps.upstream.outputs.tag }}
         run: |
           set -euo pipefail
-          gofmt -w web/backend/api/models.go web/backend/api/oauth.go pkg/auth/store.go pkg/providers/oauth/codex_provider.go pkg/providers/oauth/antigravity_provider.go pkg/providers/oauth_facade.go pkg/agent/model_resolution.go pkg/providers/provider_metadata.go pkg/androidnet/dns.go cmd/picoclaw/main.go web/backend/main.go
           make build-android-arm64 VERSION="${{ steps.upstream.outputs.tag }}" GIT_COMMIT="${{ steps.upstream.outputs.sha }}"
           make build-launcher-android-arm64 VERSION="${{ steps.upstream.outputs.tag }}" GIT_COMMIT="${{ steps.upstream.outputs.sha }}"
           packaging/magisk/build-module.sh
