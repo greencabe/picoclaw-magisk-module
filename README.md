@@ -6,10 +6,9 @@ This repo does not fork or patch PicoClaw source. GitHub Actions builds upstream
 
 ## Release flow
 
-- Stable workflow builds latest upstream non-prerelease GitHub Release.
-- Nightly workflow builds upstream `nightly` ref/tag as a separate prerelease named from the upstream version, for example `v0.3.1-nightly`.
+- Stable release contains two assets: pure upstream and `-android` DNS-patched module.
+- Nightly prerelease contains two assets: pure upstream and `-android` DNS-patched module.
 - If upstream nightly has no `v*` tag on the commit, release name falls back to `nightly-YYYYMMDD-SHA`.
-- Android-patched workflow builds separate `-android` releases with only the DNS fallback patch.
 
 - Manual trigger: Actions → Release Magisk Module → Run workflow.
 

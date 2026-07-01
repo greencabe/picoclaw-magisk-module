@@ -70,8 +70,6 @@ jobs:
             version="nightly-$(date -u +%Y%m%d)-$short_sha"
           fi
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
-          echo "short_sha=$short_sha" >> "$GITHUB_OUTPUT"
-          echo "upstream_tag=$upstream_tag" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "Resolved checked-out source at $sha as $version"
 
@@ -101,24 +99,43 @@ jobs:
           cache: pnpm
           cache-dependency-path: picoclaw/web/frontend/pnpm-lock.yaml
 
-      - name: Build Magisk module
+      - name: Build pure Magisk module
         working-directory: picoclaw
         env:
+          VERSION: ${{ steps.version.outputs.version }}
+          SHA: ${{ steps.version.outputs.sha }}
           PICOCLAW_MODULE_VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
-          make build-android-arm64 VERSION="${{ steps.version.outputs.version }}" GIT_COMMIT="${{ steps.version.outputs.sha }}"
-          make build-launcher-android-arm64 VERSION="${{ steps.version.outputs.version }}" GIT_COMMIT="${{ steps.version.outputs.sha }}"
+          make build-android-arm64 VERSION="$VERSION" GIT_COMMIT="$SHA"
+          make build-launcher-android-arm64 VERSION="$VERSION" GIT_COMMIT="$SHA"
           packaging/magisk/build-module.sh
-          mv dist/magisk/picoclaw-magisk.zip "dist/magisk/picoclaw-magisk-${{ steps.version.outputs.version }}.zip"
+          mv dist/magisk/picoclaw-magisk.zip "dist/magisk/picoclaw-magisk-$VERSION.zip"
+
+      - name: Apply Android DNS patch
+        working-directory: picoclaw
+        run: python3 ../picoclaw-magisk-module/patches/android_dns_fallback.py
+
+      - name: Build Android-patched Magisk module
+        working-directory: picoclaw
+        env:
+          VERSION: ${{ steps.version.outputs.version }}-android
+          SHA: ${{ steps.version.outputs.sha }}
+          PICOCLAW_MODULE_VERSION: ${{ steps.version.outputs.version }}-android
+        run: |
+          set -euo pipefail
+          gofmt -w pkg/androidnet/dns.go cmd/picoclaw/main.go web/backend/main.go
+          make build-android-arm64 VERSION="$VERSION" GIT_COMMIT="$SHA"
+          make build-launcher-android-arm64 VERSION="$VERSION" GIT_COMMIT="$SHA"
+          packaging/magisk/build-module.sh
+          mv dist/magisk/picoclaw-magisk.zip "dist/magisk/picoclaw-magisk-$VERSION.zip"
 
       - name: Publish GitHub prerelease
         env:
           GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
           UPSTREAM_REF: ${{ steps.upstream.outputs.ref }}
           UPSTREAM_SHA: ${{ steps.version.outputs.sha }}
-          UPSTREAM_TAG: ${{ steps.version.outputs.upstream_tag }}
-          VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
           gh release delete "$VERSION" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
@@ -126,11 +143,12 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --prerelease \
             "picoclaw/dist/magisk/picoclaw-magisk-$VERSION.zip" \
+            "picoclaw/dist/magisk/picoclaw-magisk-$VERSION-android.zip" \
             --title "PicoClaw Magisk Module $VERSION" \
-            --notes "ARM64 Android Magisk module built from upstream PicoClaw ref $UPSTREAM_REF, tag ${UPSTREAM_TAG:-none}, commit $UPSTREAM_SHA. Upstream source is built as-is; only Magisk packaging is overlaid."
+            --notes "ARM64 Android Magisk modules built from upstream PicoClaw ref $UPSTREAM_REF at $UPSTREAM_SHA. Assets: pure upstream and Android DNS fallback patched."
 
-      - name: Upload Magisk artifact
+      - name: Upload Magisk artifacts
         uses: actions/upload-artifact@v4
         with:
           name: picoclaw-magisk-${{ steps.version.outputs.version }}-arm64
-          path: picoclaw/dist/magisk/picoclaw-magisk-${{ steps.version.outputs.version }}.zip
+          path: picoclaw/dist/magisk/*.zip
