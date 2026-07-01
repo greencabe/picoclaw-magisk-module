@@ -47,25 +47,14 @@ jobs:
               echo "No upstream nightly ref found" >&2
               exit 1
             fi
-            git init upstream >/dev/null
-            git -C upstream remote add origin https://github.com/sipeed/picoclaw.git
-            git -C upstream fetch --quiet --tags --depth=1 origin "$nightly_ref"
-            nightly_sha=$(git -C upstream rev-parse FETCH_HEAD)
-            nightly_tag=$(git -C upstream tag --points-at FETCH_HEAD --list 'v*' | sort -V | tail -n 1)
-            short_sha=$(printf '%s' "$nightly_sha" | cut -c1-8)
-            if [ -n "$nightly_tag" ]; then
-              nightly_version="$nightly_tag-nightly-android"
-            else
-              nightly_version="nightly-$(date -u +%Y%m%d)-$short_sha-android"
-            fi
-            items+=("{\"channel\":\"nightly\",\"ref\":\"$nightly_ref\",\"version\":\"$nightly_version\",\"sha\":\"$nightly_sha\",\"prerelease\":true}")
+            items+=("{\"channel\":\"nightly\",\"ref\":\"$nightly_ref\",\"prerelease\":true}")
           fi
           json=$(printf '%s\n' "${items[@]}" | jq -cs '{include: .}')
           echo "matrix=$json" >> "$GITHUB_OUTPUT"
           echo "$json"
 
   build:
-    name: Build ${{ matrix.version }}
+    name: Build ${{ matrix.channel }} Android-patched
     runs-on: ubuntu-24.04
     needs: resolve
     timeout-minutes: 120
@@ -87,6 +76,30 @@ jobs:
           path: picoclaw
           fetch-depth: 0
           fetch-tags: true
+
+      - name: Resolve release version
+        id: version
+        working-directory: picoclaw
+        env:
+          CHANNEL: ${{ matrix.channel }}
+          MATRIX_VERSION: ${{ matrix.version }}
+        run: |
+          set -euo pipefail
+          sha=$(git rev-parse HEAD)
+          if [ "$CHANNEL" = "stable" ]; then
+            version="$MATRIX_VERSION"
+          else
+            upstream_tag=$(git tag --points-at HEAD --list 'v*' | sort -V | tail -n 1)
+            short_sha=$(git rev-parse --short=8 HEAD)
+            if [ -n "$upstream_tag" ]; then
+              version="$upstream_tag-nightly-android"
+            else
+              version="nightly-$(date -u +%Y%m%d)-$short_sha-android"
+            fi
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Resolved $CHANNEL as $version at $sha"
 
       - name: Overlay Magisk packaging
         run: cp -a picoclaw-magisk-module/packaging picoclaw/
@@ -121,21 +134,23 @@ jobs:
       - name: Build Magisk module
         working-directory: picoclaw
         env:
-          PICOCLAW_MODULE_VERSION: ${{ matrix.version }}
+          VERSION: ${{ steps.version.outputs.version }}
+          SHA: ${{ steps.version.outputs.sha }}
+          PICOCLAW_MODULE_VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
           gofmt -w pkg/androidnet/dns.go cmd/picoclaw/main.go web/backend/main.go
-          make build-android-arm64 VERSION="${{ matrix.version }}" GIT_COMMIT="${{ matrix.sha }}"
-          make build-launcher-android-arm64 VERSION="${{ matrix.version }}" GIT_COMMIT="${{ matrix.sha }}"
+          make build-android-arm64 VERSION="$VERSION" GIT_COMMIT="$SHA"
+          make build-launcher-android-arm64 VERSION="$VERSION" GIT_COMMIT="$SHA"
           packaging/magisk/build-module.sh
-          mv dist/magisk/picoclaw-magisk.zip "dist/magisk/picoclaw-magisk-${{ matrix.version }}.zip"
+          mv dist/magisk/picoclaw-magisk.zip "dist/magisk/picoclaw-magisk-$VERSION.zip"
 
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ matrix.version }}
+          VERSION: ${{ steps.version.outputs.version }}
           UPSTREAM_REF: ${{ matrix.ref }}
-          UPSTREAM_SHA: ${{ matrix.sha }}
+          UPSTREAM_SHA: ${{ steps.version.outputs.sha }}
           PRERELEASE: ${{ matrix.prerelease }}
         run: |
           set -euo pipefail
@@ -154,5 +169,5 @@ jobs:
       - name: Upload Magisk artifact
         uses: actions/upload-artifact@v4
         with:
-          name: picoclaw-magisk-${{ matrix.version }}-arm64
-          path: picoclaw/dist/magisk/picoclaw-magisk-${{ matrix.version }}.zip
+          name: picoclaw-magisk-${{ steps.version.outputs.version }}-arm64
+          path: picoclaw/dist/magisk/picoclaw-magisk-${{ steps.version.outputs.version }}.zip
